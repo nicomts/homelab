@@ -1,0 +1,6 @@
+[Unit]
+Description=Back up the nginx configuration
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/nginx-config-backup.sh

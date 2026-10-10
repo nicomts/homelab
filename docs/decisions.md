@@ -83,7 +83,7 @@ Why the lab is built the way it is. Each entry says what I chose, why, and what 
 
 - **Decision:** The lab's DNS server is Unbound on `fw-01`, resolving names itself, starting from the root servers, instead of forwarding queries to another DNS server.
 - **Why:** It doesn't depend on my ISP router, which doesn't answer DNS queries, or on a third-party DNS service.
-- **Trade-off:** The first lookup of each name is slower than asking a large public resolver that already has it cached. DNSSEC validation is still off, and it's the next thing to turn on.
+- **Trade-off:** The first lookup of each name is slower than asking a large public resolver that already has it cached.
 
 ## Dnsmasq for DHCP, with room for static IPs
 
@@ -110,6 +110,96 @@ Why the lab is built the way it is. Each entry says what I chose, why, and what 
 
 ## Throwaway containers for testing
 
-- **Decision:** Network tests run from a temporary LXC container (`test-01`, CT 900) that I delete afterwards.
+- **Decision:** Network tests run from a disposable LXC container (in phase 2, `test-01`, CT 900) that I delete afterwards.
 - **Why:** A container starts in seconds and uses little RAM. The high ID marks it as disposable.
 - **Trade-off:** A container shares the host's kernel, so anything that depends on the kernel needs a VM instead.
+
+## DNSSEC validation in Unbound
+
+- **Decision:** Unbound on `fw-01` validates DNSSEC signatures for every lab machine.
+- **Why:** A forged answer for a signed domain gets an error instead of reaching a server. It stayed off during phase 2 so there was one less thing that could fail, and it went on at the start of phase 3 (tested in [writeup 03](../writeups/03-linux-server-baseline.md#1-dnssec-on-the-labs-resolver)).
+- **Trade-off:** Validation depends on `fw-01`'s clock: signatures have validity dates, so with a wrong clock every signed name fails.
+
+## One server from each Linux family
+
+- **Decision:** `web-01` runs Ubuntu Server 26.04 LTS and `files-01` runs Rocky Linux 10.
+- **Why:** Debian's and Red Hat's families cover most Linux servers, and a job can put me in front of either. Doing the same baseline on both shows what changes ([writeup 03](../writeups/03-linux-server-baseline.md#same-goal-two-families)).
+- **Trade-off:** Two sets of tools and defaults to keep in mind.
+
+## VM IDs that match the IP
+
+- **Decision:** A server's VM ID is 100 plus the last part of its IP: `web-01` is VM 110 at `.10`, `files-01` is VM 111 at `.11`.
+- **Why:** Nothing to look up when moving between Proxmox and the network.
+- **Trade-off:** It only works for the static range (`.2` to `.99`).
+
+## CPU type `host`
+
+- **Decision:** The server VMs use CPU type `host`.
+- **Why:** Rocky Linux 10 needs x86-64-v3, which Proxmox's default type (x86-64-v2-AES) doesn't provide. Both servers use the same type so they differ only in the distribution.
+- **Trade-off:** A VM with CPU type `host` can't be live-migrated to a host with a different CPU. With one node, that doesn't matter.
+
+## Installing from the ISO
+
+- **Decision:** Each server is installed by hand from the distribution's ISO, not cloned from a cloud-init template.
+- **Why:** The installer (disks, LVM, network, users) is part of what I'm learning. Templates fit better with the Ansible stage.
+- **Trade-off:** Building a server by hand is slower than cloning a template.
+
+## Static IPs set in the installer, names in Dnsmasq
+
+- **Decision:** The servers' static IPs are entered in each installer, and their names are added by hand in Dnsmasq's Hosts.
+- **Why:** The installers write the network configuration (netplan, NetworkManager) without any typing in the Proxmox console, which drops Shift. Dnsmasq only registers the names of machines it gives addresses to.
+- **Trade-off:** Two places to update if a server's IP changes.
+
+## A personal admin account with a console-safe password
+
+- **Decision:** Each server has an account `nico` with `sudo`. Its password uses only lowercase letters and digits. Root logins are disabled.
+- **Why:** A named account leaves who did what in the logs, unlike a shared `admin`. The password has to be typeable in the Proxmox browser console, which drops Shift from my Mac.
+- **Trade-off:** Without symbols or capitals, only length keeps the password strong.
+
+## SSH with keys only, in a drop-in file
+
+- **Decision:** `PasswordAuthentication`, `KbdInteractiveAuthentication` and `PermitRootLogin` are off on both servers, set in `/etc/ssh/sshd_config.d/00-hardening.conf`. The key is the Mac's `id_ed25519`, which has a passphrase.
+- **Why:** A password can be guessed; a private key protected by a passphrase can't. `sshd` keeps the first value it reads, and the file whose name sorts first wins over the ones the installers leave in `sshd_config.d/` ([writeup 03](../writeups/03-linux-server-baseline.md#9-ssh-with-keys-only)).
+- **Trade-off:** Without the Mac's key, the only way in is the console.
+
+## A serial console on every Linux VM
+
+- **Decision:** Every Linux VM has a serial port, and its kernel sends a console to it. I open it with xterm.js in Proxmox or `qm terminal`.
+- **Why:** The browser console (noVNC) drops Shift from my Mac. The serial console sends text, so capitals, symbols and pasting work.
+- **Trade-off:** It only works once Linux has started. Anything before that (the boot menu, the installer) still needs noVNC.
+
+## Automatic security updates, no automatic reboots
+
+- **Decision:** `unattended-upgrades` on Ubuntu and `dnf-automatic` on Rocky install security updates only, and never reboot.
+- **Why:** Security fixes shouldn't wait for me. Reboots are my call: the lab is only on when I use it, and on real servers they go in a maintenance window.
+- **Trade-off:** Some updates, like a new kernel, only take effect after a reboot I have to remember.
+
+## A firewall on every server
+
+- **Decision:** `ufw` on Ubuntu and `firewalld` on Rocky, each allowing only what the server offers: SSH, plus HTTP on `web-01` and Samba on `files-01`.
+- **Why:** `fw-01` doesn't see traffic between two machines on the lab network, so each server filters its own.
+- **Trade-off:** A new service needs a rule on the server as well as on `fw-01`.
+
+## SELinux stays enforcing
+
+- **Decision:** SELinux stays in enforcing mode on Rocky. Access problems get fixed with labels in the policy (`semanage fcontext` and `restorecon`).
+- **Why:** Turning it off fixes one problem by removing a layer of protection for the whole server ([writeup 04](../writeups/04-samba-vs-selinux.md)).
+- **Trade-off:** New services sometimes need a label before they work.
+
+## Weekly backups of every guest, with Repeat missed
+
+- **Decision:** A Proxmox job backs up all guests every Sunday at 12:00 to `local`, in snapshot mode with ZSTD, keeping the last 3. Repeat missed is on.
+- **Why:** With Selection mode All, new guests are included automatically. The lab is only on sometimes, so a missed run happens at the next boot instead of being skipped.
+- **Trade-off:** These backups are on the same SSD as the VMs, so they don't survive that SSD failing. The next decision covers that.
+
+## A second copy on an external NTFS disk
+
+- **Decision:** After each weekly backup, I copy the backups to a USB disk that also holds my personal files. It's mounted with `ntfs3` only while copying, and Proxmox sees it as the storage `external-backup`, with `is_mountpoint` set.
+- **Why:** A copy on a different disk that can leave the house. Keeping NTFS means the disk still works with Windows and other computers. `is_mountpoint` keeps Proxmox from writing into the empty folder when the disk isn't there.
+- **Trade-off:** The copy is manual, so it's only as recent as the last time I made it. The disk must always be unmounted before unplugging, because it holds more than lab data.
+
+## A daily backup of nginx's configuration inside `web-01`
+
+- **Decision:** A systemd timer archives `/etc/nginx` every day to `/var/backups/nginx`, keeping 14 days, with `Persistent=true`.
+- **Why:** It undoes a bad configuration change without restoring the whole VM. `Persistent=true` runs a missed day at the next boot.
+- **Trade-off:** It lives inside the VM, so it's lost with it. The Proxmox backups cover that.

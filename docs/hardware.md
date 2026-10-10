@@ -19,8 +19,9 @@ The lab runs on my old desktop PC, which dual-boots Windows and Proxmox VE. Each
 | Kingston SA400 SSD | 960 GB | Windows 10 and its EFI System Partition |
 | AVEXIR S100 SSD | 240 GB | Proxmox VE: system and VM storage |
 | 3 HDDs | 2 TB, 4 TB and 2 TB | Personal data (NTFS). Not used by the lab |
+| External USB HDD (WD) | 4 TB | Personal data (NTFS), plus a `homelab-backups/` folder with the second copy of the Proxmox backups. Plugged in only to copy or restore |
 
-As seen from Proxmox. Linux names disks in the order it finds them, so these `sdX` names can change if disks are added or removed:
+As seen from Proxmox in phase 1, before any VM existed. Linux names disks in the order it finds them, so these `sdX` names can change if disks are added or removed. The external disk shows up as one more (`sdf` so far), with `usb` in `lsblk`'s `TRAN` column:
 
 ```text
 root@pve:~# lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT
@@ -52,7 +53,7 @@ sde                  1.8T disk
 
 ## Proxmox storage
 
-Proxmox is installed on `ext4` with the installer's default LVM layout:
+Proxmox is installed on `ext4` with the installer's default LVM layout (output from phase 1, with the thin pool still empty):
 
 ```text
 root@pve:~# lvs
@@ -70,8 +71,12 @@ local-lvm     lvmthin     active       136155136               0       136155136
 | --- | --- | --- |
 | `local` | A folder on the system volume (`root`, ~65 GB) | ISO images, container templates, backups |
 | `local-lvm` | The `data` thin pool (~130 GB) | VM and container disks |
+| `external-backup` | The folder `homelab-backups` on the external USB disk, mounted at `/mnt/external` with `ntfs3` | The second copy of the backups. Inactive when the disk isn't mounted (`is_mountpoint`) |
 
 A thin pool only uses space for the data a VM has actually written, so the virtual disks can add up to more than 130 GB as long as they don't all fill up.
+
+The external disk is in `/etc/fstab` by UUID with `noauto`, so it's only mounted by hand (`mount /mnt/external`) and must be unmounted (`umount /mnt/external`) before unplugging. How it's used: [writeup 05](../writeups/05-vm-backup-and-restore.md).
+
 
 ## Network
 
@@ -127,4 +132,6 @@ source /etc/network/interfaces.d/*
 | Proxmox VE | 9.2 (`pve-manager/9.2.20`) |
 | Kernel | `7.0.14-19-pve` |
 | OPNsense (`fw-01`) | 26.7.5 |
+| Ubuntu Server (`web-01`) | 26.04.1 LTS |
+| Rocky Linux (`files-01`) | 10.2 |
 | Windows | Windows 10 |

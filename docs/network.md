@@ -15,12 +15,14 @@ flowchart LR
         LAN["LAN vtnet1<br>10.10.10.1"]
     end
     subgraph LAB["Lab network 10.10.10.0/24"]
-        STATIC["Servers<br>static .2 to .99"]
+        WEB["web-01 (Ubuntu)<br>10.10.10.10"]
+        FILES["files-01 (Rocky)<br>10.10.10.11"]
         DHCP["DHCP clients<br>.100 to .199"]
     end
     ISP ---|vmbr0| WAN
     WAN --- LAN
-    LAN ---|vmbr1| STATIC
+    LAN ---|vmbr1| WEB
+    LAN ---|vmbr1| FILES
     LAN ---|vmbr1| DHCP
 ```
 
@@ -41,11 +43,30 @@ Static addresses go from `.200` up, outside the router's DHCP range.
 | Address | Use |
 | --- | --- |
 | `10.10.10.1` | `fw-01` LAN: gateway, DNS and DHCP for the lab |
-| `10.10.10.2`–`.99` | Static IPs. Planned: `web-01` (`.10`), `files-01` (`.11`), MikroTik CHR (`.21`, `.22`) |
+| `10.10.10.2`–`.99` | Static IPs: `web-01` (`.10`) and `files-01` (`.11`). Planned: MikroTik CHR (`.21`, `.22`) |
 | `10.10.10.100`–`.199` | DHCP |
 | `10.10.10.200`–`.254` | Free |
 
 Domain: `lab.home.arpa`.
+
+### Guests
+
+| Name | Proxmox ID | System | Address | Offers | Host firewall |
+| --- | --- | --- | --- | --- | --- |
+| `fw-01` | VM 100 | OPNsense 26.7.5 | `10.10.10.1` | Gateway, DNS, DHCP | It is the firewall |
+| `web-01` | VM 110 | Ubuntu Server 26.04.1 LTS | `10.10.10.10` | SSH, HTTP (nginx) | `ufw`: OpenSSH, Nginx HTTP |
+| `files-01` | VM 111 | Rocky Linux 10.2 | `10.10.10.11` | SSH, SMB (Samba share `shared`) | `firewalld`: ssh, samba |
+
+Built in [writeup 03](../writeups/03-linux-server-baseline.md); the services in [writeup 04](../writeups/04-samba-vs-selinux.md) and [writeup 05](../writeups/05-vm-backup-and-restore.md).
+
+### Host entries in Dnsmasq
+
+Dnsmasq only registers the machines it gives addresses to, so the servers with static IPs are added by hand in Services → Dnsmasq DNS & DHCP → Hosts:
+
+| Host | Domain | IP address |
+| --- | --- | --- |
+| `web-01` | `lab.home.arpa` | `10.10.10.10` |
+| `files-01` | `lab.home.arpa` | `10.10.10.11` |
 
 ## Proxmox bridges
 
@@ -68,8 +89,8 @@ Lab machines connect only to `vmbr1`. Anything on `vmbr0` is on the home network
 
 | Service | Configuration |
 | --- | --- |
-| DNS | Unbound on port 53, recursive (no forwarders). DNSSEC off for now. Queries for `lab.home.arpa` go to Dnsmasq |
-| DHCP | Dnsmasq on the LAN, `10.10.10.100`–`.199`. Registers DHCP hostnames in `lab.home.arpa` |
+| DNS | Unbound on port 53, recursive (no forwarders), with DNSSEC validation. Queries for `lab.home.arpa` go to Dnsmasq |
+| DHCP | Dnsmasq on the LAN, `10.10.10.100`–`.199`. Registers DHCP hostnames in `lab.home.arpa`, plus host entries for the servers with static IPs |
 | NAT | Outbound, automatic mode: lab traffic leaves with `192.168.0.201` |
 | Reply-to | Off (see [decisions](decisions.md#reply-to-off)) |
 
@@ -103,10 +124,11 @@ Rules are checked by Sequence, lowest first, and the first match wins.
 
 | Traffic | Result |
 | --- | --- |
-| Mac → lab | Allowed (WAN rule, only from `192.168.0.109`) |
+| Mac → lab | Allowed (WAN rule, only from `192.168.0.109`). On the servers, their own firewalls allow SSH to both, HTTP to `web-01` and SMB to `files-01` |
 | Lab → internet | Allowed (default LAN rule and NAT) |
 | Lab → home network | Blocked and logged |
 | Other home devices → lab | Blocked (no WAN rule matches) |
+| Lab machine ↔ lab machine | Never reaches `fw-01`: same network. Only each server's own firewall filters it |
 
 Replies always get back: the firewall is stateful, so the answers to a connection the Mac opened aren't checked against the LAN block.
 
@@ -120,3 +142,20 @@ alias labdown='sudo route -n delete -net 10.10.10.0/24'
 ```
 
 Check with `route -n get 10.10.10.1`: it must say `gateway: 192.168.0.201`.
+
+The Mac uses my ISP's DNS servers, which don't know `lab.home.arpa`, so `~/.ssh/config` has the servers by IP:
+
+```text
+Host web-01
+    HostName 10.10.10.10
+Host files-01
+    HostName 10.10.10.11
+Host web-01 files-01
+    User nico
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
+    AddKeysToAgent yes
+    UseKeychain yes
+```
+
+For a console that doesn't depend on the lab network, each Linux VM has a serial console: Console → xterm.js in Proxmox, or `ssh pve` and `qm terminal <vmid>`.

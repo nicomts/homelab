@@ -25,7 +25,7 @@ Give the lab its own network behind its own firewall, without putting the home n
 | LAN (the lab) | `10.10.10.1/24`, DHCP from `10.10.10.100` to `.199`, domain `lab.home.arpa` |
 | DNS for the lab | Unbound on `fw-01`, as a recursive resolver |
 | Admin machine | MacBook at `192.168.0.109`, reserved on the home router |
-| Test machine | LXC container `test-01` (CT 900), Debian 13, deleted after the tests |
+| Test machine | LXC container `test-01` (CT 900), Debian 13, deleted in phase 3 |
 
 ## Background: how a firewall VM isolates a network
 
@@ -279,7 +279,7 @@ To test from inside the lab, I created an LXC container from the `debian-13-stan
 ```text
 root@test-01:~# ip -br a
 lo               UNKNOWN        127.0.0.1/8 ::1/128
-eth0@if7         UP             10.10.10.144/24 fe80::be24:11ff:feee:c312/64
+eth0@if7         UP             10.10.10.144/24 fe80::<redacted>/64
 root@test-01:~# ip route
 default via 10.10.10.1 dev eth0
 10.10.10.0/24 dev eth0 proto kernel scope link src 10.10.10.144
@@ -352,7 +352,7 @@ The replies come back even though the lab can't start connections to the house: 
 
 **Does the house depend on the lab?** I shut down `fw-01` from Proxmox and browsed from the Mac: everything loaded. Then I started it again.
 
-Finally, I deleted `test-01` and kept the template for later.
+Finally, I stopped `test-01`. I meant to delete it, and an earlier version of this writeup said I had. I hadn't: the phase 3 backup job found it, and I deleted it then ([writeup 05](05-vm-backup-and-restore.md#problem-2-a-container-i-thought-i-had-deleted)).
 
 ## What went wrong and how I fixed it
 
