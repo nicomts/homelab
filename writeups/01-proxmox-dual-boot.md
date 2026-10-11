@@ -514,7 +514,7 @@ WinRE is enabled again, with a new BCD entry. `harddisk0\partition2` is `C:`: th
 - The default gateway isn't always a DNS server. Before typing the router's IP as DNS in a static configuration, check what DHCP gives other devices.
 - Static IPs go outside the DHCP range.
 
-## If you hit the same problem
+## Troubleshooting
 
 ### Windows boots from the disk you want to wipe
 

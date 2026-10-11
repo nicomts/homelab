@@ -163,7 +163,7 @@ There's also a switch (`setsebool -P samba_export_all_rw on`) that lets Samba re
 - A client does more than you ask it to. Finder's first write was `.DS_Store`, not my file.
 - The audit log has more than the problem at hand. Filter it by the process you care about.
 
-## If you hit the same problem
+## Troubleshooting
 
 ```bash
 getenforce                                   # Enforcing?

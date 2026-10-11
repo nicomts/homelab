@@ -7,6 +7,17 @@ writeups of what I did, what went wrong, and how I fixed it.
 
 ## Highlights
 
+From [writeup 07 — Two branch routers and a WireGuard tunnel](writeups/07-site-to-site-wireguard-mikrotik.md):
+
+- Ran two MikroTik CHR routers as branch offices joined by a WireGuard tunnel with static routes. Proved the tunnel from both sides: one hop and no loss from one branch LAN to the other, and only UDP between the two routers on the network in between.
+- Hardened RouterOS like the servers (my own user with a key, `admin` disabled, unused services off) and kept each router's configuration in the repository as an export, without private keys.
+- Moved each router from its DHCP address to a fixed one over SSH without locking myself out, by opening the new session before removing the old address.
+
+From [writeup 06 — A clients VLAN on the lab bridge](writeups/06-vlans-and-firewall-rules.md):
+
+- Added a clients network as VLAN 20 on the same Proxmox bridge, with the firewall's card as a trunk and the client on an access port, and captured the 802.1Q tag on one side and its absence on the other with `tcpdump`.
+- Wrote rules that let clients use one internal website and the internet, and block and log everything else private with a single alias. Tested each rule and matched every blocked test to the firewall log.
+
 From [writeup 05 — Backups I actually restored](writeups/05-vm-backup-and-restore.md):
 
 - Set up weekly Proxmox backups of every guest, with a second copy on a removable NTFS disk
@@ -59,13 +70,24 @@ flowchart LR
         MAC["MacBook (admin)<br>192.168.0.109"]
         PVE["Proxmox VE 9.2<br>pve.home.arpa<br>192.168.0.200"]
     end
-    ISP --- FW["fw-01 (OPNsense)<br>WAN 192.168.0.201<br>LAN 10.10.10.1"]
+    ISP --- FW["fw-01 (OPNsense)<br>WAN 192.168.0.201<br>LAN 10.10.10.1<br>CLIENTS 10.10.20.1"]
     subgraph LAB["Lab network 10.10.10.0/24"]
         WEB["web-01 (Ubuntu)<br>nginx<br>10.10.10.10"]
         FILES["files-01 (Rocky)<br>Samba<br>10.10.10.11"]
+        CHRA["chr-a (MikroTik)<br>10.10.10.21"]
+        CHRB["chr-b (MikroTik)<br>10.10.10.22"]
+    end
+    subgraph CLI["CLIENTS VLAN 20<br>10.10.20.0/24"]
+        CLIENT["client-01 (Debian)"]
     end
     FW --- WEB
     FW --- FILES
+    FW --- CHRA
+    FW --- CHRB
+    FW --- CLIENT
+    CHRA -.-|WireGuard| CHRB
+    CHRA --- BRA["Branch A<br>10.20.1.0/24"]
+    CHRB --- BRB["Branch B<br>10.20.2.0/24"]
 ```
 
 | | |
@@ -75,6 +97,8 @@ flowchart LR
 | Hypervisor | Proxmox VE 9.2 on ext4 + LVM-thin |
 | Firewall | OPNsense 26.7.5 VM (`fw-01`), the only path between the lab and the house |
 | Servers | `web-01` (Ubuntu Server 26.04.1 LTS, nginx) and `files-01` (Rocky Linux 10.2, Samba) |
+| Networks | The lab network, plus a clients VLAN (`CLIENTS`, VLAN 20) on the same bridge, filtered by `fw-01` |
+| Branch routers | `chr-a` and `chr-b`, MikroTik CHR (RouterOS 7.24.5), joined by a WireGuard tunnel |
 | Backups | Weekly Proxmox backups of every guest, plus a copy on an external USB disk |
 
 Full details in [docs/hardware.md](docs/hardware.md) and [docs/network.md](docs/network.md).
@@ -85,7 +109,7 @@ Why it's built this way: [docs/decisions.md](docs/decisions.md).
 - [x] Phase 1 — Proxmox VE dual-boot install ([writeup](writeups/01-proxmox-dual-boot.md))
 - [x] Phase 2 — OPNsense and an isolated lab network ([writeup](writeups/02-opnsense-isolated-lab.md))
 - [x] Phase 3 — Linux servers (Ubuntu, Rocky), SSH, VM backup and restore (writeups [03](writeups/03-linux-server-baseline.md), [04](writeups/04-samba-vs-selinux.md), [05](writeups/05-vm-backup-and-restore.md))
-- [ ] Phase 4 — VLANs and MikroTik CHR site-to-site WireGuard
+- [x] Phase 4 — VLANs and MikroTik CHR site-to-site WireGuard (writeups [06](writeups/06-vlans-and-firewall-rules.md), [07](writeups/07-site-to-site-wireguard-mikrotik.md)). Optional OSPF over the tunnel still pending
 - [ ] Phase 5 — Break-and-fix incidents
 
 ## Repository layout

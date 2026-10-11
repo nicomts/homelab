@@ -396,7 +396,7 @@ Each server got a `baseline` snapshot at this point.
 - A DHCP server only knows the names of the machines it gives addresses to. Machines with static IPs need DNS entries by hand.
 - Rocky Linux 10 needs a CPU with x86-64-v3, so the VM's CPU type matters before the first boot.
 
-## If you hit the same problem
+## Troubleshooting
 
 ### `PasswordAuthentication no` doesn't take effect
 

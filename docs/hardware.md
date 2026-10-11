@@ -94,7 +94,7 @@ The lab network (`10.10.10.0/24`) sits behind `fw-01`. Its addresses, DNS and fi
 Proxmox's network configuration has two bridges (virtual switches):
 
 - `vmbr0` is the home network. The host's IP lives on the bridge, not on the network card: `nic0` is plugged into the bridge, and `fw-01`'s WAN connects to the same bridge.
-- `vmbr1` is the lab network. It has no network card and no IP, so it only exists inside Proxmox, and `fw-01`'s LAN is its only way out. It's VLAN aware for phase 4.
+- `vmbr1` is the lab network. It has no network card and no IP, so it only exists inside Proxmox, and `fw-01`'s LAN is its only way out. It's VLAN aware: the lab network travels untagged, and the clients VLAN (`CLIENTS`, VLAN 20) tagged ([writeup 06](../writeups/06-vlans-and-firewall-rules.md)).
 
 ```text
 root@pve:~# cat /etc/network/interfaces
@@ -134,4 +134,6 @@ source /etc/network/interfaces.d/*
 | OPNsense (`fw-01`) | 26.7.5 |
 | Ubuntu Server (`web-01`) | 26.04.1 LTS |
 | Rocky Linux (`files-01`) | 10.2 |
+| MikroTik RouterOS (`chr-a`, `chr-b`) | 7.24.5, CHR with the free license |
+| Debian (`client-01`) | 13 (`debian-13-standard` container template) |
 | Windows | Windows 10 |

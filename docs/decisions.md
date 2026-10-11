@@ -128,9 +128,9 @@ Why the lab is built the way it is. Each entry says what I chose, why, and what 
 
 ## VM IDs that match the IP
 
-- **Decision:** A server's VM ID is 100 plus the last part of its IP: `web-01` is VM 110 at `.10`, `files-01` is VM 111 at `.11`.
+- **Decision:** A machine with a static IP on the lab network gets 100 plus the last part of its IP as its VM ID: `web-01` is VM 110 at `.10`, `files-01` is VM 111 at `.11`, and the routers `chr-a` and `chr-b` are VMs 121 and 122 at `.21` and `.22`. Clients that get their address by DHCP go in the 200s (`client-01` is CT 201).
 - **Why:** Nothing to look up when moving between Proxmox and the network.
-- **Trade-off:** It only works for the static range (`.2` to `.99`).
+- **Trade-off:** It only works for the static range of the lab network (`.2` to `.99`).
 
 ## CPU type `host`
 
@@ -203,3 +203,51 @@ Why the lab is built the way it is. Each entry says what I chose, why, and what 
 - **Decision:** A systemd timer archives `/etc/nginx` every day to `/var/backups/nginx`, keeping 14 days, with `Persistent=true`.
 - **Why:** It undoes a bad configuration change without restoring the whole VM. `Persistent=true` runs a missed day at the next boot.
 - **Trade-off:** It lives inside the VM, so it's lost with it. The Proxmox backups cover that.
+
+## VLANs on the existing lab bridge
+
+- **Decision:** New networks inside the lab are VLANs on `vmbr1`. `fw-01`'s lab card has no tag, so it's a trunk; each client's card has its VLAN's tag, so it's an access port. The first one is `CLIENTS`, VLAN 20, `10.10.20.0/24`.
+- **Why:** `vmbr1` has been VLAN aware since phase 2, so a new network needs no new card on the firewall and no new bridge. Traffic between VLANs has to go through `fw-01`, so its rules decide what crosses ([writeup 06](../writeups/06-vlans-and-firewall-rules.md)).
+- **Trade-off:** Every VLAN shares `fw-01`'s single lab card, and a wrong tag quietly puts a machine on the wrong network.
+
+## One block rule with every private range
+
+- **Decision:** On `CLIENTS`, one logged rule blocks traffic to `PRIVATE_NETS`, an alias with the three RFC 1918 ranges. It sits below the rules that allow DNS to `fw-01` and HTTP/HTTPS to `web-01`, and above the rule that allows the internet.
+- **Why:** One rule covers the servers, `fw-01`'s own web interface, the house, the branches and any private network I add later. It's also easy to check in the log.
+- **Trade-off:** Anything private a client should reach needs its own allow rule above the block.
+
+## A container as the clients VLAN's test machine
+
+- **Decision:** `client-01`, an LXC container with Debian 13, stays in the lab as the test client on `CLIENTS`.
+- **Why:** Testing firewall rules needs a machine on the network, not a desktop. A container starts in seconds, uses 512 MB, and its console passes Shift.
+- **Trade-off:** It isn't a user's PC: no browser and no desktop operating system.
+
+## MikroTik CHR for the branch routers
+
+- **Decision:** The two branch routers are MikroTik Cloud Hosted Routers, RouterOS 7, with the free license.
+- **Why:** RouterOS is widely used by ISPs and small networks, and a CHR runs the same system as MikroTik's hardware routers in a 512 MB VM. The free license doesn't expire.
+- **Trade-off:** The free license limits upload to 1 Mbps per interface: enough to test routing, not throughput.
+
+## Branch LANs as bridges without ports
+
+- **Decision:** Each branch's LAN is a bridge with no ports on its router (`branch-lan`).
+- **Why:** In RouterOS, a bridge without ports is an interface that's always up, like a loopback. It stands for a LAN without one more VM per branch.
+- **Trade-off:** There's no host behind each router, so tests between branches have to start from the router's LAN address (`src-address`).
+
+## WireGuard with static routes between the branches
+
+- **Decision:** A WireGuard tunnel joins the branches (UDP 13231, a `/30` for the two ends), with one static route on each router to the other branch's LAN. OSPF is an optional next step.
+- **Why:** WireGuard is built into RouterOS 7 and has few moving parts. With two sites, two static routes are easier to read and to debug than a routing protocol ([writeup 07](../writeups/07-site-to-site-wireguard-mikrotik.md)).
+- **Trade-off:** Each new branch means peers and routes by hand on every router.
+
+## RouterOS access: my user, my key, fewer services
+
+- **Decision:** Each router has a user `nico` (group `full`) with the Mac's key. `admin` is disabled, and telnet, FTP, the web interface and the API are off. SSH keeps `password-authentication=yes-if-no-key`, so a user with a key can only log in with it.
+- **Why:** The same baseline as the servers: a named account, keys over SSH, and nothing listening that I don't use.
+- **Trade-off:** WinBox stays on and still accepts passwords.
+
+## Router configurations in the repository as `/export`
+
+- **Decision:** Each router's configuration goes in `configs/<router>/export.rsc`, taken with `/export`, without Windows line endings and without the `system id` line.
+- **Why:** An export is the configuration written as commands, so it can be read, compared with `git diff` and loaded again. RouterOS 7 leaves private keys out of it.
+- **Trade-off:** Users, SSH keys and default values aren't in the export, so the hardening is documented only in the writeup.

@@ -263,7 +263,7 @@ INFO: Finished Backup of VM 100 (00:00:19)
 - `TASK OK` can hide an `ERROR` line. Read the log.
 - The copy that protects against losing the SSD is only as recent as the last time I made it, so making it is part of the routine.
 
-## If you hit the same problem
+## Troubleshooting
 
 ### Using a removable disk for Proxmox backups
 

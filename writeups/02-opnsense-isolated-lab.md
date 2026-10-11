@@ -511,7 +511,7 @@ The alias was already empty when I applied the WAN rule, so that lockout had the
 - Any Apply in OPNsense reloads the firewall and turns `pfctl -d` off. The console is the emergency exit, so its password has to be typeable there.
 - Unplug a new firewall's home-side network card until you know which card it uses as LAN, or its DHCP server can hand out addresses to the whole house.
 
-## If you hit the same problem
+## Troubleshooting
 
 ### You're locked out of the OPNsense web interface
 
